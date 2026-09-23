@@ -36,15 +36,16 @@ export async function onRequest({ request, env }) {
 
   let message = '';
   let conversationId = '';
+  let createOnly = false;
   try {
     const body = await request.json();
     message = (body.message || '').trim();
     conversationId = body.conversationId || '';
+    // 兼容旧版 ensureConv 协议：POST {} 仅创建会话，返回 JSON
+    createOnly = !body.message && !body.conversationId;
   } catch {
     return json({ error: '请求体必须是 JSON' }, 400);
   }
-  if (!message) return json({ error: 'message 不能为空' }, 400);
-
   // 1. 无会话则创建（透传给影刀）
   try {
     if (!conversationId) {
@@ -64,10 +65,14 @@ export async function onRequest({ request, env }) {
         return json({ error: d.msg || '会话创建失败' }, 502);
       }
       conversationId = d.data.conversationUuid;
+      if (createOnly) {
+        return json({ success: true, data: { conversationUuid: conversationId } });
+      }
     }
   } catch (e) {
     return json({ error: `创建会话异常: ${e.message}` }, 502);
   }
+  if (!message) return json({ error: 'message 不能为空' }, 400);
 
   // 2. 调影刀 stream 端点，响应体**原样透传**给前端
   const streamRes = await fetch(
